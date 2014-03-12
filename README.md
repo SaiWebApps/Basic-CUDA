@@ -1,4 +1,4 @@
 CUDA
 ====
 
-NVIDIA CUDA Programs
+Practice programs written using NVIDIA's CUDA libraries
