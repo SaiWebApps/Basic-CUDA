@@ -1,9 +1,17 @@
 #include <stdio.h>
+#include <time.h>
 
-#define NUM_ELEMS 4
+#define NUM_ELEMS 16
+#define BLOCK_SIZE 4
 
 __global__ void multiply(int *a, int *b, int *c) {
-   c[blockIdx.x] =  a[blockIdx.x] * b[blockIdx.x];
+   int index = blockIdx.x * blockDim.x + threadIdx.x;
+   __shared__ int shared_mem[BLOCK_SIZE];   
+
+   //Copy a and b into shared memory.
+   shared_mem[threadIdx.x] = a[index] * b[index];
+   //Transfer result from shared memory into output array c.
+   c[index] = shared_mem[threadIdx.x];
 }
 
 int main() {
@@ -15,6 +23,14 @@ int main() {
   int output[NUM_ELEMS];
   size_t numBytes = NUM_ELEMS * sizeof(int);
   int i = 0; //loop counter
+  clock_t cpu_time = clock(); //Start CPU clock.
+  float time = 0.0f;
+  cudaEvent_t start, stop;
+
+  //Start GPU clock.
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+  cudaEventRecord(start, 0);
 
   //Load host1 and host2 with values.
   for (i = 0; i < NUM_ELEMS; i++) {
@@ -32,11 +48,16 @@ int main() {
   cudaMemcpy(device2, &host2, numBytes, cudaMemcpyHostToDevice);
 
   //Launch multiply kernel on GPU with given parameters.
-  //Specify NUM_ELEMS thread blocks, each with 1 thread.
-  multiply <<< NUM_ELEMS,1 >>>(device1, device2, device3);
+  //Specify NUM_ELEMS thread blocks, each with BLOCK_SIZE threads.
+  multiply <<<NUM_ELEMS/BLOCK_SIZE,BLOCK_SIZE>>>(device1, device2, device3);
 
   //Get result from device to host.
   cudaMemcpy(&output, device3, numBytes, cudaMemcpyDeviceToHost);
+
+  //Stop GPU clock - determine how long GPU kernel took to run.
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+  cudaEventElapsedTime(&time, start, stop);
 
   //Print out values.
   for (i = 0; i < NUM_ELEMS; i++) {
@@ -48,5 +69,9 @@ int main() {
   cudaFree(device2);
   cudaFree(device3);
 
+  //Calculate total runtime.
+  cpu_time = clock() - cpu_time; //CPU time
+  time += ((double)cpu_time)/CLOCKS_PER_SEC; //Add CPU time to GPU time.
+  printf("%f\n", time); //print out total runtime
   return 0;
 }
